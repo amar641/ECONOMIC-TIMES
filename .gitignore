@@ -1,3 +1,13 @@
+### Python / IndustrialMind ###
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.env
+data/ark25/*
+!data/ark25/.gitkeep
+
 ### AL ###
 #Template for AL projects for Dynamics 365 Business Central
 #launch.json folder
