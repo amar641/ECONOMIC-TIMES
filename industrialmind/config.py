@@ -19,7 +19,7 @@ class Config:
     gemini_api_key: str
     extraction_model: str = "gemini-2.5-flash"
     explanation_model: str = "gemini-2.5-flash"
-    embedding_model: str = "text-embedding-004"
+    embedding_model: str = "gemini-embedding-001"
 
 
 @lru_cache(maxsize=1)
@@ -35,5 +35,5 @@ def get_config() -> Config:
         gemini_api_key=api_key,
         extraction_model=os.environ.get("INDUSTRIALMIND_EXTRACTION_MODEL", "gemini-2.5-flash"),
         explanation_model=os.environ.get("INDUSTRIALMIND_EXPLANATION_MODEL", "gemini-2.5-flash"),
-        embedding_model=os.environ.get("INDUSTRIALMIND_EMBEDDING_MODEL", "text-embedding-004"),
+        embedding_model=os.environ.get("INDUSTRIALMIND_EMBEDDING_MODEL", "gemini-embedding-001"),
     )

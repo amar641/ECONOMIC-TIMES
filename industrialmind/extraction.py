@@ -135,6 +135,7 @@ class ExtractionEngine:
     def _to_observation(item: dict, document_id: str) -> Observation:
         event_date = item.get("event_date") or ""
         timestamp = _coerce_timestamp(event_date)
+        source_type_hint = item.get("source_type_hint", "").strip() or "general"
 
         return Observation(
             observation_id=str(uuid.uuid4()),
@@ -147,10 +148,10 @@ class ExtractionEngine:
             polarity=float(max(-1.0, min(1.0, item.get("polarity", 0.0)))),
             confidence=float(max(0.0, min(1.0, item.get("confidence", 0.9)))),
             timestamp=timestamp,
-            source_type=item.get("source_type_hint", "general").strip() or "general",
+            source_type=source_type_hint,
             document_id=document_id,
             raw_excerpt=item.get("raw_excerpt", "").strip(),
-        )
+    )
 
 
 def _coerce_timestamp(event_date: str) -> str:
