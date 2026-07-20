@@ -16,7 +16,32 @@ Usage:
 import sys
 
 from industrialmind.brain import IndustrialBrain
-from industrialmind.dataset.ark25_generator import generate, write_to_disk, as_ingest_batch
+from industrialmind.dataset.ark25_generator import as_ingest_batch, generate, write_to_disk
+
+_GEMINI_TOKEN_ERROR_MARKERS = (
+    "resource_exhausted",
+    "quota",
+    "token",
+    "tokens",
+    "rate limit",
+    "429",
+)
+
+
+def _is_gemini_token_error(exc: Exception) -> bool:
+    message = f"{type(exc).__name__}: {exc}".lower()
+    return any(marker in message for marker in _GEMINI_TOKEN_ERROR_MARKERS)
+
+
+def _print_runtime_error(exc: Exception) -> None:
+    if _is_gemini_token_error(exc):
+        print(
+            "\nERROR: Gemini API quota or token limit appears to be exhausted. "
+            "Check your Gemini plan, token quota, or rate limits, then retry.",
+            file=sys.stderr,
+        )
+    else:
+        print(f"\nERROR: {exc}", file=sys.stderr)
 
 SAMPLE_QUERIES = [
     ("Why is pump P-101 flagged as high risk?", "P-101"),
@@ -39,13 +64,17 @@ def main():
     try:
         brain = IndustrialBrain()
     except RuntimeError as e:
-        print(f"\nERROR: {e}", file=sys.stderr)
+        _print_runtime_error(e)
         sys.exit(1)
 
     print("\n[3/4] Ingesting documents through the pipeline "
           "(extraction -> classification -> knowledge graph / HMNN)...")
     batch = as_ingest_batch(docs)
-    results = brain.ingest_batch(batch)
+    try:
+        results = brain.ingest_batch(batch)
+    except Exception as e:
+        _print_runtime_error(e)
+        sys.exit(1)
 
     static_n = sum(1 for r in results if r.doc_class == "static")
     dynamic_n = sum(1 for r in results if r.doc_class == "dynamic")
@@ -76,7 +105,11 @@ def main():
         print("\n" + "=" * 70)
         print(f"Q [{asset_id}]: {query}")
         print("-" * 70)
-        answer = brain.ask(query, asset_id=asset_id)
+        try:
+            answer = brain.ask(query, asset_id=asset_id)
+        except Exception as e:
+            _print_runtime_error(e)
+            sys.exit(1)
         print(answer["answer"])
         print(f"\n  (belief-state confidence: {answer['belief_state_confidence']}, "
               f"{len(answer['citations'])} citations)")
