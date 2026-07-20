@@ -90,6 +90,7 @@ def publish_events(path: Path = EVENT_BUS_PATH) -> None:
     """Append demo events to the local JSONL bus for event_bus.py to consume."""
     path.parent.mkdir(parents=True, exist_ok=True)
     print(f"Publishing live demo events to {path}", flush=True)
+    print(f"Producer process PID: {os.getpid()}", flush=True)
     with path.open("a", encoding="utf-8") as stream:
         for event in _live_events():
             stream.write(json.dumps(event) + "\n")

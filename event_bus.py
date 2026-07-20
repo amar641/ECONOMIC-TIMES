@@ -62,6 +62,7 @@ def consume_events(path: Path = EVENT_BUS_PATH) -> None:
 
     memory = PlantMemory()
     print(f"IndustrialMind event bus listening on {path}", flush=True)
+    print(f"Background/process PID: {os.getpid()}", flush=True)
     print("Waiting for events. In another terminal run: python demo_live.py", flush=True)
 
     with path.open("r", encoding="utf-8") as stream:
