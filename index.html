@@ -693,7 +693,7 @@
   <div class="rail-title">Pipeline</div>
   <div class="stage" data-stage="generate_dataset"><div class="stage-dot"></div><div class="stage-name">Dataset generation</div><div class="stage-meta" id="meta-generate_dataset"></div></div>
   <div class="stage" data-stage="brain_init"><div class="stage-dot"></div><div class="stage-name">Brain init</div><div class="stage-meta" id="meta-brain_init"></div></div>
-  <div class="stage" data-stage="extraction"><div class="stage-dot"></div><div class="stage-name">Extraction (Gemini)</div><div class="stage-meta" id="meta-extraction"></div></div>
+  <div class="stage" data-stage="extraction"><div class="stage-dot"></div><div class="stage-name">Extraction (Ollama)</div><div class="stage-meta" id="meta-extraction"></div></div>
   <div class="stage" data-stage="classification"><div class="stage-dot"></div><div class="stage-name">Classification</div><div class="stage-meta" id="meta-classification"></div></div>
   <div class="stage" data-stage="hmnn_update"><div class="stage-dot"></div><div class="stage-name">HMNN update</div><div class="stage-meta" id="meta-hmnn_update"></div></div>
   <div class="stage" data-stage="knowledge_graph_update"><div class="stage-dot"></div><div class="stage-name">Knowledge graph</div><div class="stage-meta" id="meta-knowledge_graph_update"></div></div>
@@ -1054,7 +1054,7 @@ function handleEvent(type, payload) {
       break;
     case 'brain_ready':
       setStageDone('brain_init');
-      setStageMeta('brain_init', 'Gemini client ready');
+      setStageMeta('brain_init', 'Ollama client ready');
       document.getElementById('engineEmpty').style.display = 'none';
       document.getElementById('engineContent').style.display = 'block';
       break;

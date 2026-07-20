@@ -15,7 +15,7 @@ public methods demo.py already calls (IndustrialBrain.ingest_document,
 .ask, .asset_dashboard, .asset_detail) — it just also tells the browser
 about it in real time.
 
-Requires GEMINI_API_KEY exactly as demo.py does.
+Requires a local Ollama server with qwen2.5:7b, configured through `.env`.
 """
 
 import sys
@@ -54,7 +54,7 @@ def main():
         "filenames": [d.filename for d in docs],
     })
 
-    # ── Step 2: initialise the brain (real Gemini client construction) ──────
+    # ── Step 2: initialise the brain (local Ollama client construction) ─────
     with timed("brain_init"):
         try:
             brain = IndustrialBrain()
@@ -81,7 +81,7 @@ def main():
             "document_id": document_id,
         })
 
-        # -- Extraction (real Gemini call, via the same extractor brain uses) --
+        # -- Extraction (local Ollama call, via the same extractor brain uses) --
         with timed("extraction", {"filename": filename, "document_id": document_id}):
             observations = brain._extractor.extract(text, document_id, filename)
 

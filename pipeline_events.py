@@ -40,12 +40,14 @@ def emit(event_type: str, payload: Dict[str, Any] = None):
     Send one event to the live browser demo. Never raises — a failed emit
     should never take down the actual pipeline run.
     """
+    event_payload = payload or {}
+    print(f"[FLOW] {event_type}: {event_payload}", flush=True)
     if not _check_bus():
         return
     try:
         requests.post(
             _BUS_URL,
-            json={"type": event_type, "payload": payload or {}},
+            json={"type": event_type, "payload": event_payload},
             timeout=1.0,
         )
     except Exception:

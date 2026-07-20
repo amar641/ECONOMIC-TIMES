@@ -6,7 +6,7 @@ Wires the full pipeline from the architecture diagram into one entry point:
   Documents -> Extraction -> Knowledge Classification
        -> {Static -> Knowledge Graph, Dynamic -> HMNN Evidence Engine}
        -> Industrial Brain (Asset Memory)
-       -> RAG + Gemini (explanation layer)
+       -> local RAG + Ollama (explanation layer)
 
 Two public methods: ingest_document() and ask().
 """
@@ -41,6 +41,7 @@ class IndustrialBrain:
     """
 
     def __init__(self):
+        print("[FLOW] Initialising local Ollama extraction and explanation services...", flush=True)
         self.plant_memory = PlantMemory()
         self.knowledge_graph = KnowledgeGraph()
         self._extractor = ExtractionEngine()
@@ -51,14 +52,17 @@ class IndustrialBrain:
     def ingest_document(self, filename: str, document_text: str, document_id: str) -> IngestResult:
         """
         Process one document end to end:
-          1. Extract observations (Gemini).
+          1. Extract observations (Ollama).
           2. Classify the document (static vs dynamic, source_type/authority).
           3. Route: static -> Knowledge Graph, dynamic -> HMNN via PlantMemory.
           4. Index everything into the RAG vector store.
         """
         warnings: List[str] = []
 
+        print(f"[FLOW] Document {document_id}: {filename}", flush=True)
+        print("[FLOW]   extraction: started", flush=True)
         observations = self._extractor.extract(document_text, document_id, filename)
+        print(f"[FLOW]   extraction: {len(observations)} observation(s)", flush=True)
         if not observations:
             warnings.append("No observations extracted from this document.")
 
@@ -66,6 +70,9 @@ class IndustrialBrain:
             filename, document_text,
             extractor_hint=observations[0].source_type if observations else "",
         )
+        print(f"[FLOW]   classification: {classification.doc_class} / "
+              f"{classification.source_type} (authority={classification.authority}, "
+              f"rule={classification.matched_rule})", flush=True)
 
         for obs in observations:
             obs.source_type = classification.source_type
@@ -73,13 +80,16 @@ class IndustrialBrain:
             obs.doc_class = classification.doc_class
 
         if classification.doc_class == "static":
+            print("[FLOW]   route: Knowledge Graph + local RAG store (HMNN unchanged)", flush=True)
             engine_result = self.knowledge_graph.add_static_observations(observations)
             self.plant_memory.ingest_observations(observations, doc_class="static")
         else:
+            print("[FLOW]   route: HMNN Evidence Engine + local RAG store", flush=True)
             engine_result = self.plant_memory.ingest_observations(observations, doc_class="dynamic")
 
         if observations:
             self._rag.index_observations(observations, doc_class=classification.doc_class)
+            print(f"[FLOW]   RAG index: added {len(observations)} item(s)", flush=True)
 
         return IngestResult(
             filename=filename,
@@ -98,6 +108,7 @@ class IndustrialBrain:
     # ── Query ────────────────────────────────────────────────────────────────
 
     def ask(self, query: str, asset_id: Optional[str] = None, top_k: int = 8) -> Dict:
+        print(f"[FLOW] Query for {asset_id or 'all assets'}: {query}", flush=True)
         return self._rag.ask(query, self.plant_memory, self.knowledge_graph, asset_id=asset_id, top_k=top_k)
 
     # ── Dashboards ───────────────────────────────────────────────────────────

@@ -1,8 +1,8 @@
 """
 Configuration and environment loading for IndustrialMind.
 
-GEMINI_API_KEY must be set in the environment or in a `.env` file at the
-project root (see .env.example). Never commit a real .env file.
+IndustrialMind uses a locally running Ollama server. Configure its URL and
+model in `.env` if the defaults do not match your Docker setup.
 """
 
 import os
@@ -16,24 +16,19 @@ load_dotenv()
 
 @dataclass(frozen=True)
 class Config:
-    gemini_api_key: str
-    extraction_model: str = "gemini-2.5-flash"
-    explanation_model: str = "gemini-2.5-flash"
-    embedding_model: str = "gemini-embedding-001"
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen2.5:7b"
+    ollama_timeout_seconds: int = 180
 
 
 @lru_cache(maxsize=1)
 def get_config() -> Config:
-    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError(
-            "GEMINI_API_KEY is not set. Create a .env file in the project "
-            "root (see .env.example) with GEMINI_API_KEY=<your-key>, or "
-            "export it as an environment variable."
-        )
+    try:
+        timeout = int(os.environ.get("OLLAMA_TIMEOUT_SECONDS", "180"))
+    except ValueError as exc:
+        raise RuntimeError("OLLAMA_TIMEOUT_SECONDS must be a whole number.") from exc
     return Config(
-        gemini_api_key=api_key,
-        extraction_model=os.environ.get("INDUSTRIALMIND_EXTRACTION_MODEL", "gemini-2.5-flash"),
-        explanation_model=os.environ.get("INDUSTRIALMIND_EXPLANATION_MODEL", "gemini-2.5-flash"),
-        embedding_model=os.environ.get("INDUSTRIALMIND_EMBEDDING_MODEL", "gemini-embedding-001"),
+        ollama_base_url=os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/"),
+        ollama_model=os.environ.get("OLLAMA_MODEL", "qwen2.5:7b"),
+        ollama_timeout_seconds=timeout,
     )

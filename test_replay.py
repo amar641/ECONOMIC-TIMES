@@ -1,7 +1,7 @@
 """
 Sends a synthetic but realistically-shaped event sequence to the bus, so
 we can verify index.html renders every event type correctly BEFORE running
-against the real Gemini-backed pipeline. Mirrors demo_live.py's exact
+against the real Ollama-backed pipeline. Mirrors demo_live.py's exact
 payload shapes for hmnn_updated, worker_query_done, etc.
 """
 import time
