@@ -389,7 +389,7 @@ class MomentumEngine:
     from the full observation history.
 
     CRITICAL: This is the only source of momentum values.
-    The extractor (Gemini) must NEVER set momentum.
+    The extractor (Ollama) must NEVER set momentum.
     Momentum is a property of the evidence stream over time, not a document.
     """
 

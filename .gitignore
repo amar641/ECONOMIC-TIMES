@@ -5,6 +5,7 @@ __pycache__/
 venv/
 *.egg-info/
 .env
+.claude/
 data/ark25/*
 !data/ark25/.gitkeep
 
@@ -31,5 +32,3 @@ rad.json
 *.flf
 #Test results file
 TestResults.xml
-# Local live demo event stream
-data/live_events.jsonl

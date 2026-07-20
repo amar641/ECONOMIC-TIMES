@@ -1,95 +1,89 @@
 """
-IndustrialMind live event bus consumer.
+Event Bus — bridges the real IndustrialMind pipeline to the live browser demo.
 
-Run this in one terminal, then run `python demo_live.py` in another terminal.
-The consumer tails a local JSONL event file, converts each event into an
-Observation, feeds it into PlantMemory, and prints dashboard updates.
+Run this FIRST, before demo_live.py:
+    python event_bus.py
+Then open index.html in a browser (it connects to ws://localhost:8000/ws).
+Then in a second terminal:
+    python demo_live.py
 
-This intentionally avoids external services so the live demo works without a
-Gemini API key. Override the event stream path with LIVE_EVENT_BUS_FILE.
+Every event emitted by demo_live.py (via `emit()` in pipeline_events.py) is
+POSTed here and immediately broadcast to every connected browser. No fake
+timing, no scripted animation — the browser shows exactly what the pipeline
+is doing, when it's doing it.
 """
 
-from __future__ import annotations
-
+import asyncio
 import json
-import os
-import time
-from pathlib import Path
-from typing import Dict
+from typing import List
 
-from industrialmind.hmnn_engine import Observation, PlantMemory
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
-EVENT_BUS_PATH = Path(os.environ.get("LIVE_EVENT_BUS_FILE", "data/live_events.jsonl"))
-POLL_SECONDS = float(os.environ.get("LIVE_EVENT_BUS_POLL_SECONDS", "0.5"))
+app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-def _event_to_observation(event: Dict) -> Observation:
-    """Convert one JSON event from demo_live.py into a HMNN Observation."""
-    return Observation(
-        observation_id=event["observation_id"],
-        asset_id=event["asset_id"],
-        asset_name=event.get("asset_name", event["asset_id"]),
-        asset_type=event.get("asset_type", "Unknown"),
-        event_type=event.get("event_type", "Sensor Data"),
-        attribute=event.get("attribute", "General"),
-        claim=event["claim"],
-        polarity=float(event.get("polarity", 0.0)),
-        confidence=float(event.get("confidence", 0.9)),
-        timestamp=event.get("timestamp", ""),
-        source_type=event.get("source_type", "sensor_data"),
-        document_id=event.get("document_id", event["observation_id"]),
-        raw_excerpt=event.get("raw_excerpt", event["claim"]),
-    )
+_connections: List[WebSocket] = []
+_event_log: List[dict] = []  # replay buffer, so late-connecting browsers still see prior events
 
 
-def _print_dashboard(memory: PlantMemory) -> None:
-    print("\nAsset dashboard")
-    print("-" * 88)
-    for asset in memory.all_assets_summary():
-        print(
-            f"{asset['asset_id']:8s} {asset['asset_name'][:32]:32s} "
-            f"status={asset['status']:9s} risk={asset['risk_label']:9s} "
-            f"health={asset['health_score']:.3f} confidence={asset['confidence']:.3f} "
-            f"obs={asset['n_observations']}"
-        )
-    print("-" * 88, flush=True)
+class EventIn(BaseModel):
+    type: str
+    payload: dict = {}
 
 
-def consume_events(path: Path = EVENT_BUS_PATH) -> None:
-    """Tail the event file forever and ingest each appended JSON event."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.touch(exist_ok=True)
-
-    memory = PlantMemory()
-    print(f"IndustrialMind event bus listening on {path}", flush=True)
-    print(f"Background/process PID: {os.getpid()}", flush=True)
-    print("Waiting for events. In another terminal run: python demo_live.py", flush=True)
-
-    with path.open("r", encoding="utf-8") as stream:
-        # Read existing lines first, then keep waiting for appended events.
-        # This makes the two-terminal demo visible even if demo_live.py is run
-        # before event_bus.py starts.
+@app.websocket("/ws")
+async def ws_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    _connections.append(websocket)
+    # Replay everything that already happened, in order, so the browser can
+    # be opened before OR after demo_live.py starts.
+    for evt in _event_log:
+        await websocket.send_text(json.dumps(evt))
+    try:
         while True:
-            line = stream.readline()
-            if not line:
-                time.sleep(POLL_SECONDS)
-                continue
+            # We don't expect messages from the browser, but keep the socket
+            # open and drain anything it sends (e.g. browser ping/pong).
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        _connections.remove(websocket)
 
-            try:
-                event = json.loads(line)
-                observation = _event_to_observation(event)
-            except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
-                print(f"Skipping invalid event: {exc}", flush=True)
-                continue
 
-            result = memory.ingest_observations([observation], doc_class="dynamic")
-            print(
-                f"\nReceived {observation.observation_id}: "
-                f"{observation.asset_id} | {observation.attribute} | {observation.claim}"
-            )
-            print(f"HMNN update: {result['assets_updated']}", flush=True)
-            _print_dashboard(memory)
+@app.post("/emit")
+async def emit(event: EventIn):
+    record = {"type": event.type, "payload": event.payload}
+    _event_log.append(record)
+    dead = []
+    for ws in _connections:
+        try:
+            await ws.send_text(json.dumps(record))
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        if ws in _connections:
+            _connections.remove(ws)
+    return {"status": "ok", "delivered_to": len(_connections)}
+
+
+@app.post("/reset")
+async def reset():
+    """Clear the replay buffer — call this before a fresh demo run."""
+    _event_log.clear()
+    return {"status": "ok"}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "connections": len(_connections), "events_logged": len(_event_log)}
 
 
 if __name__ == "__main__":
-    consume_events()
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")

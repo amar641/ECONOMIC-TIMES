@@ -6,9 +6,8 @@ through the full pipeline (extraction -> classification -> knowledge graph
 / HMNN -> RAG index), prints the resulting asset health dashboard, then
 runs a few sample RAG queries.
 
-Requires GEMINI_API_KEY in a .env file at the project root (see
-.env.example) — extraction, embeddings, and the explanation layer all call
-the real Gemini API.
+Requires a local Ollama server with qwen2.5:7b (or the model configured in
+.env). Extraction and the explanation layer remain fully local.
 
 Usage:
     python demo.py
@@ -61,7 +60,7 @@ def main():
     out_dir = write_to_disk(docs)
     print(f"    {len(docs)} documents generated -> {out_dir}/")
 
-    print("\n[2/4] Initialising Industrial Brain (Gemini extraction + RAG)...")
+    print("\n[2/4] Initialising Industrial Brain (local Ollama + RAG)...")
     try:
         brain = IndustrialBrain()
     except RuntimeError as e:
@@ -101,7 +100,7 @@ def main():
         )
     print("-" * 70)
 
-    print("\nSample RAG queries (Gemini explanation layer):")
+    print("\nSample RAG queries (local Ollama explanation layer):")
     for query, asset_id in SAMPLE_QUERIES:
         print("\n" + "=" * 70)
         print(f"Q [{asset_id}]: {query}")

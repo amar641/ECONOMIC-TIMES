@@ -5,7 +5,7 @@ Turns raw document text (already OCR'd/parsed upstream from PDFs, scanned
 forms, spreadsheets, email archives, P&IDs) into atomic `Observation`
 records — the schema HMNN consumes (hmnn_engine.Observation).
 
-The LLM (Gemini) is used ONLY for extraction: pulling structured claims out
+The local LLM (Ollama) is used ONLY for extraction: pulling structured claims out
 of unstructured text. It never sets `authority` or `momentum` (see
 hmnn_engine.py header) and its `source_type` guess is treated as a hint —
 classification.classify_document() makes the deterministic call.
@@ -16,11 +16,9 @@ import uuid
 from datetime import datetime, date
 from typing import List
 
-from google import genai
-from google.genai import types
-
 from industrialmind.config import get_config
 from industrialmind.hmnn_engine import Observation
+from industrialmind.ollama_client import OllamaClient
 
 _OBSERVATION_ITEM_SCHEMA = {
     "type": "object",
@@ -47,9 +45,7 @@ _OBSERVATION_ITEM_SCHEMA = {
         "confidence": {"type": "number", "description": "Extractor's confidence in this extraction, 0.0-1.0."},
         "source_type_hint": {
             "type": "string",
-            "description": "Best guess at document type: safety_regulation, oem_manual, rca_report, "
-                            "inspection_report, maintenance_log, sensor_data, sop, incident_report, "
-                            "compliance_audit, operator_log, vendor_document, email, general.",
+            "description": "Optional document-type hint.",
         },
         "event_date": {"type": "string", "description": "ISO 8601 date (YYYY-MM-DD) if stated in the document, else empty string."},
         "raw_excerpt": {"type": "string", "description": "The exact sentence/phrase from the source text this was extracted from."},
@@ -83,12 +79,13 @@ Rules:
 
 
 class ExtractionEngine:
-    """Gemini-backed OCR/Entity Extraction stage of the pipeline."""
+    """Ollama-backed entity extraction stage of the pipeline."""
 
     def __init__(self):
         cfg = get_config()
         self._cfg = cfg
-        self._client = genai.Client(api_key=cfg.gemini_api_key)
+        self._client = OllamaClient(cfg)
+        self._client.ensure_ready()
 
     def extract(self, document_text: str, document_id: str,
                 filename: str = "") -> List[Observation]:
@@ -109,48 +106,65 @@ class ExtractionEngine:
 
         prompt = (
             f"{_EXTRACTION_SYSTEM_PROMPT}\n\n"
+            "Return exactly one JSON object with this shape:\n"
+            "{\"observations\": [{\"asset_id\": \"string\", \"asset_name\": \"string\", "
+            "\"asset_type\": \"string\", \"event_type\": \"string\", \"attribute\": "
+            "\"string\", \"claim\": \"string\", \"polarity\": number from -1 to 1, "
+            "\"confidence\": number from 0 to 1, \"source_type_hint\": \"string\", "
+            "\"event_date\": \"YYYY-MM-DD or empty\", \"raw_excerpt\": \"string\"}]}.\n"
+            "Use PLANT when an asset tag is not stated. Do not use markdown or additional keys.\n\n"
             f"Filename: {filename or document_id}\n\n"
             f"Document text:\n\"\"\"\n{document_text}\n\"\"\""
         )
 
-        response = self._client.models.generate_content(
-            model=self._cfg.extraction_model,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=_RESPONSE_SCHEMA,
-                temperature=0.1,
-            ),
+        response = self._client.generate(
+            prompt,
+            system="Return only valid JSON matching the requested object schema.",
+            json_output=True,
+            temperature=0.1,
         )
-
-        payload = json.loads(response.text)
+        try:
+            payload = json.loads(response)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Ollama returned invalid JSON for document extraction.") from exc
         raw_items = payload.get("observations", [])
 
         observations = []
         for item in raw_items:
-            observations.append(self._to_observation(item, document_id))
+            try:
+                observations.append(self._to_observation(item, document_id))
+            except (AttributeError, KeyError, TypeError, ValueError):
+                # Local models can occasionally omit a field despite JSON mode.
+                # Ignore malformed entries rather than losing the entire document.
+                continue
         return observations
 
     @staticmethod
     def _to_observation(item: dict, document_id: str) -> Observation:
+        if not isinstance(item, dict):
+            raise TypeError("Observation must be a JSON object.")
         event_date = item.get("event_date") or ""
         timestamp = _coerce_timestamp(event_date)
-        source_type_hint = item.get("source_type_hint", "").strip() or "general"
+        source_type_hint = str(item.get("source_type_hint", "")).strip() or "general"
+        asset_id = str(item.get("asset_id", "PLANT")).strip() or "PLANT"
+        claim = str(item.get("claim", "")).strip()
+        if not claim:
+            raise ValueError("Observation has no claim.")
 
         return Observation(
             observation_id=str(uuid.uuid4()),
-            asset_id=item["asset_id"].strip() or "PLANT",
-            asset_name=item.get("asset_name", "").strip() or item["asset_id"],
-            asset_type=item.get("asset_type", "").strip() or "Unknown",
-            event_type=item.get("event_type", "Reference").strip(),
-            attribute=item.get("attribute", "").strip() or "General",
-            claim=item["claim"].strip(),
+            asset_id=asset_id,
+            asset_name=str(item.get("asset_name", "")).strip() or asset_id,
+            asset_type=str(item.get("asset_type", "")).strip() or "Unknown",
+            event_type=str(item.get("event_type", "Reference")).strip() or "Reference",
+            attribute=str(item.get("attribute", "")).strip() or "General",
+            claim=claim,
             polarity=float(max(-1.0, min(1.0, item.get("polarity", 0.0)))),
             confidence=float(max(0.0, min(1.0, item.get("confidence", 0.9)))),
             timestamp=timestamp,
             source_type=source_type_hint,
             document_id=document_id,
-            raw_excerpt=item.get("raw_excerpt", "").strip(),
+            raw_excerpt=str(item.get("raw_excerpt", "")).strip(),
     )
 
 

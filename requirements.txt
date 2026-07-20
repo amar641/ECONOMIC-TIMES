@@ -1,4 +1,6 @@
 numpy
 python-dotenv
-google-genai
 networkx
+fastapi
+uvicorn
+requests
